@@ -1,4 +1,4 @@
-package jwt_validation_middleware
+package multi_jwt_validation_middleware
 
 import (
 	"bytes"
