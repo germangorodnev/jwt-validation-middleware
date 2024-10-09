@@ -23,13 +23,13 @@ services:
     - "--entrypoints.traefik.address=:9000"
     - "--api.dashboard=true"
     - "--api.insecure=true"
-    - "--experimental.localPlugins.jwt-validation-middleware.moduleName=github.com/legege/jwt-validation-middleware"
+    - "--experimental.localPlugins.jwt-validation-middleware.moduleName=github.com/germangorodnev/multi-jwt-validation-middleware"
     ports:
     - "83:80"
     - "127.0.0.1:9127:9000"
     volumes:
     - "traefik-proxy:/data"
-    - ".:/plugins-local/src/github.com/legege/jwt-validation-middleware/"
+    - ".:/plugins-local/src/github.com/germangorodnev/multi-jwt-validation-middleware/"
     - "/var/run/docker.sock:/var/run/docker.sock:ro"
 
   whoami:

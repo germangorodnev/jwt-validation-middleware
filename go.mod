@@ -1,3 +1,3 @@
-module github.com/legege/jwt-validation-middleware
+module github.com/germangorodnev/multi-jwt-validation-middleware
 
 go 1.19

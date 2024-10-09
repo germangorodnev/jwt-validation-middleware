@@ -1,13 +1,13 @@
-# JWT Validation Middleware
+# Multi JWT Validation Middleware
 
-JWT Validation Middleware is a middleware plugin for [Traefik](https://github.com/containous/traefik) which verifies a JWT token in Auth header, Cookie or Query param, and adds the payload as injected headers to the request.
+Multi JWT Validation Middleware is a middleware plugin for [Traefik](https://github.com/containous/traefik) which verifies a JWT token in Auth header, Cookie or Query param, and adds the payload as injected headers to the request. Supports multiple configurations.
 
 ## Configuration
 
 Start with command
 ```yaml
 command:
-  - "--experimental.plugins.jwt-validation-middleware.modulename=github.com/legege/jwt-validation-middleware"
+  - "--experimental.plugins.jwt-validation-middleware.modulename=github.com/germangorodnev/multi-jwt-validation-middleware"
   - "--experimental.plugins.jwt-validation-middleware.version=v0.2.1"
 ```
 
@@ -43,7 +43,7 @@ Use as docker-compose label
 
 ## Initial release
 
-Inspired by code from https://github.com/23deg/jwt-middleware and https://github.com/team-carepay/traefik-jwt-plugin
+This is a modified version of https://github.com/legege/jwt-validation-middleware changed to support multiple configs.
 
 ## Local testing
 
