@@ -17,22 +17,24 @@ Activate plugin in your config
 http:
   middlewares:
     my-jwt-middleware:
-      configs:
-        - secret: ThisIsMyVerySecret1
-          optional: false
-          payloadHeaders:
-            X-Custom-Header1: sub
-            X-Custom-Header2: name
-          authQueryParam: authToken1
-          authCookieName: authToken1
-          forwardAuth: false
-        - secret: ThisIsMyVerySecret2
-          optional: true
-          payloadHeaders:
-            X-Custom-Header3: email
-          authQueryParam: authToken2
-          authCookieName: authToken2
-          forwardAuth: true
+      plugin:
+        multi-jwt-validation-middleware:
+          configs:
+            - secret: ThisIsMyVerySecret1
+              optional: false
+              payloadHeaders:
+                X-Custom-Header1: sub
+                X-Custom-Header2: name
+              authQueryParam: authToken1
+              authCookieName: authToken1
+              forwardAuth: false
+            - secret: ThisIsMyVerySecret2
+              optional: true
+              payloadHeaders:
+                X-Custom-Header3: email
+              authQueryParam: authToken2
+              authCookieName: authToken2
+              forwardAuth: true
 ```
 
 Use as docker-compose label  
@@ -43,7 +45,7 @@ Use as docker-compose label
 
 ## Initial release
 
-This is a modified version of https://github.com/legege/jwt-validation-middleware changed to support multiple configs.
+This is a modified version of [jwt-validation-middleware](https://github.com/legege/jwt-validation-middleware) changed to support multiple configs.
 
 ## Local testing
 
