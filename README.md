@@ -17,16 +17,22 @@ Activate plugin in your config
 http:
   middlewares:
     my-jwt-middleware:
-      plugin:
-        jwt-validation-middleware:
-          secret: ThisIsMyVerySecret
-          optional: true
+      configs:
+        - secret: ThisIsMyVerySecret1
+          optional: false
           payloadHeaders:
             X-Custom-Header1: sub
             X-Custom-Header2: name
-          authQueryParam: authToken
-          authCookieName: authToken
+          authQueryParam: authToken1
+          authCookieName: authToken1
           forwardAuth: false
+        - secret: ThisIsMyVerySecret2
+          optional: true
+          payloadHeaders:
+            X-Custom-Header3: email
+          authQueryParam: authToken2
+          authCookieName: authToken2
+          forwardAuth: true
 ```
 
 Use as docker-compose label  
@@ -47,8 +53,8 @@ docker-compose -f docker-compose.test.yml up
 
 ```
 JWT_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.LbfasWi8LZnBHOPAiOsroqRW7yK6mgKABkzes-iQrds"
-curl -H "Host: test.host.local" "http://localhost:80/" -i
-curl -H "Host: test.host.local" "http://localhost:80/?authToken=$JWT_TOKEN" -i
-curl -H "Host: test.host.local" --cookie "authToken=$JWT_TOKEN" "http://localhost:80/" -i
-curl -H "Host: test.host.local" -H "Authorization: Bearer $JWT_TOKEN" "http://localhost:80/" -i
+curl -H "Host: test.host.local" "http://localhost:83/" -i
+curl -H "Host: test.host.local" "http://localhost:83/?authToken=$JWT_TOKEN" -i
+curl -H "Host: test.host.local" --cookie "authToken=$JWT_TOKEN" "http://localhost:83/" -i
+curl -H "Host: test.host.local" -H "Authorization: Bearer $JWT_TOKEN" "http://localhost:83/" -i
 ```

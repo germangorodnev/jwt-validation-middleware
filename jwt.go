@@ -15,7 +15,7 @@ import (
 	"encoding/json"
 )
 
-type Config struct {
+type JWTConfig struct {
 	Secret         string            `json:"secret,omitempty"`
 	Optional       bool              `json:"optional,omitempty"`
 	PayloadHeaders map[string]string `json:"payloadHeaders,omitempty"`
@@ -24,8 +24,13 @@ type Config struct {
 	ForwardAuth    bool              `json:"forwardAuth,omitempty"`
 }
 
-func CreateConfig() *Config {
-	return &Config{
+// Main middleware config
+type Config struct {
+	Configs []*JWTConfig `json:"configs,omitempty"`
+}
+
+func CreateParameters() *JWTConfig {
+	return &JWTConfig{
 		Secret:         "SECRET",
 		Optional:       false,
 		AuthQueryParam: "authToken",
@@ -34,15 +39,16 @@ func CreateConfig() *Config {
 	}
 }
 
+func CreateConfig() *Config {
+	return &Config{
+		Configs: []*JWTConfig{CreateParameters()},
+	}
+}
+
 type JWT struct {
-	next           http.Handler
-	name           string
-	secret         string
-	optional       bool
-	payloadHeaders map[string]string
-	authQueryParam string
-	authCookieName string
-	forwardAuth    bool
+	next    http.Handler
+	name    string
+	configs []*JWTConfig
 }
 
 type Token struct {
@@ -53,80 +59,88 @@ type Token struct {
 
 func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
 	return &JWT{
-		next:           next,
-		name:           name,
-		secret:         config.Secret,
-		optional:       config.Optional,
-		payloadHeaders: config.PayloadHeaders,
-		authQueryParam: config.AuthQueryParam,
-		authCookieName: config.AuthCookieName,
-		forwardAuth:    config.ForwardAuth,
+		next:    next,
+		name:    name,
+		configs: config.Configs,
 	}, nil
 }
 
 func (j *JWT) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	token, err := j.ExtractToken(request)
-	if token == nil {
+	var lastError error
+	var lastStatus int
+	for _, config := range j.configs {
+		token, err := j.ExtractToken(request, config)
+		if token == nil {
+			if err != nil {
+				lastError = err
+				lastStatus = http.StatusInternalServerError
+				continue
+			}
+			if !config.Optional {
+				lastError = fmt.Errorf("no token provided")
+				lastStatus = http.StatusUnauthorized
+				continue
+			}
+			j.next.ServeHTTP(response, request)
+			return
+		}
+
+		verified, err := j.VerifyTokenSignature(token, config.Secret)
 		if err != nil {
-			http.Error(response, err.Error(), http.StatusInternalServerError)
-			return
+			lastError = err
+			lastStatus = http.StatusInternalServerError
+			continue
 		}
-		if j.optional == false {
-			http.Error(response, "no token provided", http.StatusUnauthorized)
-			return
+
+		if !verified {
+			lastError = fmt.Errorf("invalid token signature")
+			lastStatus = http.StatusUnauthorized
+			continue
 		}
+
+		// Validate expiration, when provided and signature is valid
+		if exp, ok := token.payload["exp"]; ok {
+			if expInt, err := strconv.ParseInt(fmt.Sprint(exp), 10, 64); err != nil || expInt < time.Now().Unix() {
+				lastError = fmt.Errorf("token is expired")
+				lastStatus = http.StatusUnauthorized
+				continue
+			}
+		}
+
+		// Inject header as proxypayload or configured name
+		for k, v := range config.PayloadHeaders {
+			if payloadValue, ok := token.payload[v]; ok {
+				request.Header.Add(k, fmt.Sprint(payloadValue))
+			}
+		}
+
 		j.next.ServeHTTP(response, request)
 		return
 	}
 
-	verified, err := j.VerifyTokenSignature(token)
-	if err != nil {
-		http.Error(response, err.Error(), http.StatusUnauthorized)
-		return
+	// no suitable config
+	if lastError != nil {
+		http.Error(response, lastError.Error(), lastStatus)
+	} else {
+		http.Error(response, "no valid token found", http.StatusUnauthorized)
 	}
-
-	if !verified {
-		http.Error(response, "invalid token signature", http.StatusUnauthorized)
-		return
-	}
-
-	// Validate expiration, when provided and signature is valid
-	if exp, ok := token.payload["exp"]; ok {
-		if expInt, err := strconv.ParseInt(fmt.Sprint(exp), 10, 64); err != nil || expInt < time.Now().Unix() {
-			http.Error(response, "token is expired", http.StatusUnauthorized)
-			return
-		}
-	}
-
-	// Inject header as proxypayload or configured name
-	for k, v := range j.payloadHeaders {
-		_, ok := token.payload[v]
-		if ok {
-			request.Header.Add(k, fmt.Sprint(token.payload[v]))
-		}
-	}
-
-	j.next.ServeHTTP(response, request)
 }
 
-func (j *JWT) VerifyTokenSignature(token *Token) (bool, error) {
-	mac := hmac.New(sha256.New, []byte(j.secret))
+func (j *JWT) VerifyTokenSignature(token *Token, secret string) (bool, error) {
+	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(token.plaintext)
 	expectedMAC := mac.Sum(nil)
 
-	if hmac.Equal(token.signature, expectedMAC) {
-		return true, nil
-	}
-	return false, nil
+	return hmac.Equal(token.signature, expectedMAC), nil
 }
 
-func (j *JWT) ExtractToken(req *http.Request) (*Token, error) {
-	rawToken := j.extractTokenFromHeader(req)
-	if len(rawToken) == 0 && j.authQueryParam != "" {
-		rawToken = j.extractTokenFromQuery(req)
+func (j *JWT) ExtractToken(req *http.Request, config *JWTConfig) (*Token, error) {
+	rawToken := j.extractTokenFromHeader(req, config)
+	if len(rawToken) == 0 && config.AuthQueryParam != "" {
+		rawToken = j.extractTokenFromQuery(req, config)
 	}
-	if len(rawToken) == 0 && j.authCookieName != "" {
-		rawToken = j.extractTokenFromCookie(req)
+	if len(rawToken) == 0 && config.AuthCookieName != "" {
+		rawToken = j.extractTokenFromCookie(req, config)
 	}
 	if len(rawToken) == 0 {
 		return nil, nil
@@ -158,16 +172,16 @@ func (j *JWT) ExtractToken(req *http.Request) (*Token, error) {
 	return &token, nil
 }
 
-func (j *JWT) extractTokenFromCookie(request *http.Request) string {
-	cookie, err := request.Cookie(j.authCookieName)
+func (j *JWT) extractTokenFromCookie(request *http.Request, config *JWTConfig) string {
+	cookie, err := request.Cookie(config.AuthCookieName)
 	if err != nil {
 		return ""
 	}
-	if !j.forwardAuth {
+	if !config.ForwardAuth {
 		cookies := request.Cookies()
 		request.Header.Del("Cookie")
 		for _, c := range cookies {
-			if c.Name != j.authCookieName {
+			if c.Name != config.AuthCookieName {
 				request.AddCookie(c)
 			}
 		}
@@ -175,12 +189,12 @@ func (j *JWT) extractTokenFromCookie(request *http.Request) string {
 	return cookie.Value
 }
 
-func (j *JWT) extractTokenFromQuery(request *http.Request) string {
-	if request.URL.Query().Has(j.authQueryParam) {
-		token := request.URL.Query().Get(j.authQueryParam)
-		if !j.forwardAuth {
+func (j *JWT) extractTokenFromQuery(request *http.Request, config *JWTConfig) string {
+	if request.URL.Query().Has(config.AuthQueryParam) {
+		token := request.URL.Query().Get(config.AuthQueryParam)
+		if !config.ForwardAuth {
 			qry := request.URL.Query()
-			qry.Del(j.authQueryParam)
+			qry.Del(config.AuthQueryParam)
 			request.URL.RawQuery = qry.Encode()
 			request.RequestURI = request.URL.RequestURI()
 		}
@@ -189,7 +203,7 @@ func (j *JWT) extractTokenFromQuery(request *http.Request) string {
 	return ""
 }
 
-func (j *JWT) extractTokenFromHeader(request *http.Request) string {
+func (j *JWT) extractTokenFromHeader(request *http.Request, config *JWTConfig) string {
 	authHeader, ok := request.Header["Authorization"]
 	if !ok {
 		return ""
@@ -199,7 +213,7 @@ func (j *JWT) extractTokenFromHeader(request *http.Request) string {
 		return ""
 	}
 
-	if !j.forwardAuth {
+	if !config.ForwardAuth {
 		request.Header.Del("Authorization")
 	}
 	return auth[7:]
